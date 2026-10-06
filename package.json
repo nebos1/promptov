@@ -1,0 +1,55 @@
+{
+  "dependencies": {
+    "@google/genai": "^2.24.0",
+    "dotenv": "^18.0.4"
+  },
+  "name": "promptov",
+  "version": "1.0.0",
+  "description": "A small CLI that turns a vague visual idea into a useful image prompt for AI image generators.",
+  "scripts": {
+    "start": "node cli.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "files": [
+    "cli.js",
+    "gemini.js",
+    "instructions.js",
+    "limits.js",
+    "validation.js",
+    "response.js",
+    "errors.js",
+    "error-handler.js"
+  ],
+  "keywords": [
+    "ai",
+    "prompt",
+    "image",
+    "generator",
+    "cli",
+    "visual",
+    "idea",
+    "text-to-image",
+    "prompt-generator",
+    "prompt-engineering",
+    "creative",
+    "artificial-intelligence",
+    "image-generation",
+    "text-to-image-generation",
+    "prompt-creation",
+    "image-prompt",
+    "text-to-image-prompt",
+    "ai-art",
+    "ai-image-generation",
+    "creative-prompting",
+    "visual-prompting",
+    "prompt-optimization",
+    "image-prompting",
+    "text-to-image-creation"
+  ],
+  "author": "nebos1",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "promptov": "./cli.js"
+  }
+}

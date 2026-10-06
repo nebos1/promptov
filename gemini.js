@@ -8,11 +8,11 @@ import { ApiRequestError, ConfigError } from './errors.js';
 const DEFAULT_MODEL = "gemini-3.8-flash";
 
 export function getGeminiConfig() {
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+    const apiKey = process.env.API_KEY?.trim();
+    const model = process.env.MODEL?.trim() || DEFAULT_MODEL;
 
     if (!apiKey) {
-        throw new ConfigError('GEMINI_API_KEY is not set!');
+        throw new ConfigError('API_KEY is not set!');
     }
 
     return { apiKey, model };

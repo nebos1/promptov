@@ -69,7 +69,7 @@ export function validateHistory(history) {
     }
 
     if (history.length % 2 === 0) {
-        throw new HistoryValidationError('Conversation history must end with a model message!');
+        throw new HistoryValidationError('Conversation history must end with a user message!');
     }
 }
 

@@ -4,7 +4,7 @@
     "dotenv": "^18.0.4"
   },
   "name": "promptov",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A small CLI that turns a vague visual idea into a useful image prompt for AI image generators.",
   "scripts": {
     "start": "node cli.js",
@@ -47,7 +47,7 @@
     "text-to-image-creation"
   ],
   "author": "nebos1",
-  "license": "MIT",
+  "license": "ISC",
   "type": "module",
   "bin": {
     "promptov": "./cli.js"

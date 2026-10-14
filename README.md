@@ -36,7 +36,7 @@ Length limits use JavaScript's string length. Some symbols count as more than on
 ## Install
 
 ```bash
-npm install -g promptov
+npm install @nebos1/promptov
 ```
 
 ## Set your API key

@@ -1,25 +1,34 @@
 {
-  "dependencies": {
-    "@google/genai": "^2.24.0",
-    "dotenv": "^18.0.4"
-  },
-  "name": "promptov",
-  "version": "0.0.1",
+  "name": "@nebos1/promptov",
+  "version": "0.1.0",
   "description": "A small CLI that turns a vague visual idea into a useful image prompt for AI image generators.",
-  "scripts": {
-    "start": "node cli.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "type": "module",
+  "bin": {
+    "promptov": "cli.js"
   },
   "files": [
     "cli.js",
-    "gemini.js",
-    "instructions.js",
-    "limits.js",
+    "api-client.js",
+    "history.js",
     "validation.js",
     "response.js",
     "errors.js",
-    "error-handler.js"
+    "error-handler.js",
+    "config.js"
   ],
+  "scripts": {
+    "start": "node cli.js",
+    "test": "node --test",
+    "configure-api": "node scripts/configure-api.mjs",
+    "prepack": "node scripts/check-release.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=24.18.0"
+  },
   "keywords": [
     "ai",
     "prompt",
@@ -48,8 +57,12 @@
   ],
   "author": "nebos1",
   "license": "ISC",
-  "type": "module",
-  "bin": {
-    "promptov": "./cli.js"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nebos1/promptov.git"
+  },
+  "homepage": "https://github.com/nebos1/promptov#readme",
+  "bugs": {
+    "url": "https://github.com/nebos1/promptov/issues"
   }
 }

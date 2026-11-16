@@ -1,6 +1,5 @@
-// These classes describe what failed. They do not print or choose recovery actions.
-// Recovery is choosen in error-handler.js
-
+// THESE CLASSES DESCRIBE WHAT FAILED. THEY DO NOT PRINT OR CHOOSE RECOVERY ACTIONS.
+// RECOVERY IS CHOSEN IN ERROR-HANDLER.JS.
 
 // USER CAN FIX AND TRY AGAIN ERRORS
 //
@@ -11,6 +10,20 @@ export class UserMessageError extends Error {
     }
 }
 
+export class UserMessageLimitError extends UserMessageError {
+    constructor(message) {
+        super(message);
+        this.name = 'UserMessageLimitError';
+    }
+}
+
+export class InputRelevanceError extends UserMessageError {
+    constructor() {
+        super('Describe a visual idea or answer the current image-related question.');
+        this.name = 'InputRelevanceError';
+    }
+}
+
 export class HistoryLimitError extends Error {
     constructor(message) {
         super(message);
@@ -18,14 +31,7 @@ export class HistoryLimitError extends Error {
     }
 }
 
-export class ClarificationLimitError extends Error {
-    constructor(message) {
-        super(message);
-        this.name = 'ClarificationLimitError';
-    }
-}
 //
-
 
 // PROBLEMS WITH THE MODEL / API ANSWERS
 export class ModelResponseError extends Error {
@@ -49,23 +55,31 @@ export class ApiBlockedError extends Error {
     }
 }
 
-export class ApiRequestError extends Error {
+export class BackendRequestError extends Error {
     constructor(message, cause) {
         super(message);
-        this.name = 'ApiRequestError';
         this.cause = cause;
         this.status = cause?.status;
         this.code = cause?.code;
+        this.name = 'BackendRequestError';
     }
 }
 //
-
 
 // MISSING OR INVALID CONFIGURATION
 export class ConfigError extends Error {
     constructor(message) {
         super(message);
         this.name = 'ConfigError';
+    }
+}
+
+export class GenerationUnavailableError extends Error {
+    constructor() {
+        super(
+            'Promptov is temporarily unable to respond. Your conversation has been kept. Resubmit later with /send, or use /new for a fresh idea.'
+        );
+        this.name = 'GenerationUnavailableError';
     }
 }
 

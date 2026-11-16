@@ -1,115 +1,169 @@
-import { LIMITS } from './limits.js';
-import { UserMessageError, HistoryValidationError, HistoryLimitError, ClarificationLimitError } from './errors.js';
-
-// text containing atleast 1 letter or number
-const MEANINGFUL_TEXT = /[\p{L}\p{N}]/u;
-// char control except TAB, NEW LINE, CARRIAGE RETURN
-const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+import { isIP } from 'node:net';
+import {
+    UserMessageError,
+    HistoryValidationError,
+    InputRelevanceError
+} from './errors.js';
+import { emptyContext } from './history.js';
 
 export function hasMeaningfulText(text) {
-    return typeof text === 'string' && MEANINGFUL_TEXT.test(text);
+    return typeof text === 'string' && /[\p{L}\p{N}]/u.test(text);
 }
 
+// CHECK THE USER'S INPUT BEFORE SENDING IT
 export function validateUserMessage(message) {
-    if(typeof message !== 'string' || !message.trim()) {
-        throw new UserMessageError('No input provided. Enter a valid visual idea!');
+    if (typeof message !== 'string' || !message.trim()) {
+        throw new UserMessageError('Enter a visual idea.');
     }
-    if(!hasMeaningfulText(message)) {
-        throw new UserMessageError('Your message needs at least one word or number!');
+    if (!hasMeaningfulText(message)) {
+        throw new UserMessageError('Your message needs at least one word or number.');
     }
-    if(CONTROL_CHARS.test(message)) {
-        throw new UserMessageError('Your message contains unsupported control characters!');
-    }
-    validateUserMessageLength(message);
-}
-
-// measuring the trimmed message
-export function validateUserMessageLength(message) {
-    const maximumUnits = LIMITS.MAX_USER_MESSAGE_UNITS;
-    const length = message.trim().length;
-    if(length > maximumUnits) {
-        throw new UserMessageError(
-            `Your message is too long! Shorten it and try again!\n` +
-            `Your message characters length: [${length}]\n` +
-            `Allowed characters length: [${maximumUnits}]`
-        );
+    if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(message)) {
+        throw new UserMessageError('Your message contains unsupported control characters.');
     }
 }
 
-// history rule:
-// user -> model -> user -> model ... (ending with user message)
+// REJECT OBVIOUS OPENING NOISE WITHOUT AN API REQUEST
+export function validateLocalIntent(message, hasContext = false) {
+    if (hasContext) {
+        return;
+    }
+    const text = message.trim().toLowerCase().replace(/[.!?]+$/u, '');
+    const smallTalk = ['hi', 'hello', 'hey', 'hi there', 'hello there', 'how are you', 'thanks', 'thank you', 'bye', 'здравей', 'здравейте', 'здрасти'];
+    if (smallTalk.includes(text) || /^(.)\1{15,}$/u.test(text)) {
+        throw new InputRelevanceError();
+    }
+}
+
+// HISTORY MUST CONTAIN VALID USER AND MODEL TURNS
 export function validateHistory(history) {
-    if (!Array.isArray(history) || history.length === 0) {
-        throw new HistoryValidationError('Conversation history must not be empty!');
+    if (
+        !Array.isArray(history) ||
+        !history.length ||
+        history[0]?.role !== 'user' ||
+        history.at(-1)?.role !== 'user'
+    ) {
+        throw new HistoryValidationError('History must begin and end with a user message.');
     }
-
-    for (let index = 0; index < history.length; index++) {
-        const entry = history[index];
-        const expectedRole = index % 2 === 0 ? 'user' : 'model';
-
-        if (entry === null || typeof entry !== 'object') {
-            throw new HistoryValidationError(`History entry [${index}] must be an object!`);
+    for (const entry of history) {
+        if (
+            !entry ||
+            !['user', 'model'].includes(entry.role) ||
+            !Array.isArray(entry.parts) ||
+            !entry.parts.length
+        ) {
+            throw new HistoryValidationError('History must contain user or model text messages.');
         }
-
-        if (entry.role !== expectedRole) {
-            throw new HistoryValidationError(`History entry [${index}] must have the role "${expectedRole}"!`);
-        }
-
-        if (!Array.isArray(entry.parts) || entry.parts.length === 0) {
-            throw new HistoryValidationError(`History entry [${index}] must contain non-empty text parts!`);
-        }
-
-        for (let j = 0; j < entry.parts.length; j++) {
-            const part = entry.parts[j];
-            
-            if (!part || typeof part.text !== 'string' || part.text.trim() === '') {
-                throw new HistoryValidationError(`History entry [${index}] must contain non-empty text parts!`);
+        for (const part of entry.parts) {
+            if (!part || typeof part.text !== 'string' || !part.text.trim()) {
+                throw new HistoryValidationError('History messages must contain text.');
             }
         }
     }
-
-    if (history.length % 2 === 0) {
-        throw new HistoryValidationError('Conversation history must end with a user message!');
-    }
 }
 
-//call this on the proposed request (history + the new user message) before sending it.
-export function validateHistorySize(history) {
-    const max = LIMITS.MAX_WHOLE_CONVERSATION_UNITS;
-    let total = 0;
+export function getMessageText(message) {
+    const parts = [];
+    for (const part of message.parts) {
+        parts.push(part.text);
+    }
+    return parts.join('\n');
+}
 
-    for (let i = 0; i < history.length; i++) {
-        const entry = history[i];
-        if (entry && entry.parts) {
-            for (let j = 0; j < entry.parts.length; j++) {
-                const part = entry.parts[j];
-                if (part && part.text) {
-                    total += part.text.length;
-                }
-            }
+export function getUserText(history) {
+    const messages = [];
+    for (const message of history) {
+        if (message.role === 'user') {
+            messages.push(getMessageText(message));
         }
     }
-
-    if (total > max) {
-        throw new HistoryLimitError(
-            `The conversation chat with Promptov became too long! Shorten it and try again!\n` +
-            `Your message characters length: [${total}]\n` +
-            `Allowed conversation length: [${max}]`
-        );
-    }
+    return messages.join('\n');
 }
 
-// rounds = number of responses of clarification questions received for the current idea
-// 1 round may consist of different amount of clarification questions. 
-export function validateClarificationRounds(rounds) {
-    const maximumRounds = LIMITS.MAX_CLARIFICATION_ROUNDS;
-    if(!Number.isInteger(rounds) || rounds < 0) {
-        throw new HistoryValidationError('The clarification round counter is invalid!');
+// ACCEPT CONTEXT FACTS ONLY WITH THE REQUIRED EVIDENCE
+export function validateContext(value = emptyContext()) {
+    if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value) ||
+        Object.keys(value).sort().join(',') !== 'country,ip,language,summary' ||
+        !(value.language === null || typeof value.language === 'string') ||
+        typeof value.summary !== 'string'
+    ) {
+        throw new HistoryValidationError('Invalid conversation context.');
     }
-    if(rounds > maximumRounds) {
-        throw new ClarificationLimitError(
-            `Promptov needed more than [${maximumRounds}] clarification rounds!`
-        );
+    if (value.language !== null && (value.language.length > 80 || !hasMeaningfulText(value.language))) {
+        throw new HistoryValidationError('Invalid conversation language.');
     }
+    for (const name of ['country', 'ip']) {
+        const fact = value[name];
+        if (fact === null) {
+            continue;
+        }
+        if (
+            !fact ||
+            typeof fact !== 'object' ||
+            Array.isArray(fact) ||
+            Object.keys(fact).sort().join(',') !== 'confirmed,evidence,source,value' ||
+            typeof fact.value !== 'string' ||
+            !fact.value.trim() ||
+            fact.value.length > 100 ||
+            typeof fact.evidence !== 'string' ||
+            !fact.evidence.trim() ||
+            fact.evidence.length > 500 ||
+            !['stated', 'inferred_from_language'].includes(fact.source) ||
+            fact.confirmed !== (fact.source === 'stated')
+        ) {
+            throw new HistoryValidationError('Facts must distinguish user statements from assumptions.');
+        }
+        if (
+            name === 'ip' &&
+            (fact.source !== 'stated' ||
+                !isIP(fact.value))
+        ) {
+            throw new HistoryValidationError('An IP address may only be stored when supplied by the user.');
+        }
+    }
+    return structuredClone(value);
 }
 
+// PARTIAL ANSWERS STAY SEPARATE FROM COMPLETED HISTORY
+export function validateInterruptions(value = []) {
+    if (!Array.isArray(value)) {
+        throw new HistoryValidationError('Invalid interrupted responses.');
+    }
+    const result = [];
+    for (const entry of value) {
+        if (
+            !entry ||
+            entry.model !== 'assistant' ||
+            typeof entry.text !== 'string' ||
+            entry.complete !== false ||
+            entry.stopReason !== 'output_limit'
+        ) {
+            throw new HistoryValidationError('Invalid interrupted model response.');
+        }
+        result.push({ model: entry.model, text: entry.text, complete: false, stopReason: 'output_limit' });
+    }
+    return result;
+}
+
+export function validateRequestHistory(history) {
+    validateHistory(history);
+
+    const result = [];
+    for (const entry of history) {
+        const text = getMessageText(entry);
+        if (entry.role === 'user') {
+            validateUserMessage(text);
+        } else {
+            try {
+                JSON.parse(text);
+            } catch {
+                throw new HistoryValidationError('Complete model replies must contain valid JSON.');
+            }
+        }
+        result.push({ role: entry.role, parts: [{ text }] });
+    }
+    return result;
+}

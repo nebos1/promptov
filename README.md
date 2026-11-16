@@ -1,94 +1,69 @@
 # Promptov
 
-Turn a rough visual idea into a clear prompt for an AI image generator, right from your terminal.
+Turn a rough visual idea into a useful image-generation prompt, right from your terminal.
 
-## Why I made it
-
-Sometimes you know what you want to create, but describing it is the hard part. I made Promptov to help turn those ideas into useful image prompts.
-
-## What it does
-
-- Takes your idea and asks questions when something needs clarification.
-- Uses Google's Gemini API to write a complete image prompt.
-- Lets you start another idea when the prompt is finished.
-
-Promptov writes prompts—it does not generate images.
+Describe your idea, answer clarification questions, and refine the result through conversation. Copy the finished prompt into your preferred image-generation tool. Promptov writes text prompts; it does not generate images or inspect uploaded images.
 
 ## Requirements
 
-- Node.js 24.18.0 or newer
-- npm
-- An internet connection
+- Node.js 24.18.0 or later and npm.
+- An internet connection and an available Promptov service.
 
-Promptov is free to install and use. Google's API limits and any usage charges are separate.
+## Install and run
 
-## Limitations
-
-- Text only: Promptov cannot inspect images or open reference links.
-- Each message and generated reply is limited to 2,000 text units.
-- Each idea allows up to 10 clarification rounds.
-- Conversation history sent to Gemini is limited to 30,000 text units. Exceeding the conversation or clarification limit starts a new idea.
-- Google's usage limits or high demand may temporarily prevent a response.
-- Generated prompts may need adjustments before use.
-
-Length limits use JavaScript's string length. Some symbols count as more than one unit.
-
-## Install
-
-```bash
-npm install @nebos1/promptov
-```
-
-## Set your API key
-
-You can get your own free Google API key from [Google AI Studio](https://aistudio.google.com/apikey).
-
-In PowerShell:
-
-```powershell
-$env:API_KEY = "your-api-key"
-```
-
-On macOS or Linux:
-
-```bash
-export API_KEY="your-api-key"
-```
-
-This sets the key for your current terminal session. Run Promptov in the same terminal. You do not need a `.env` file.
-
-## Run
-
-```bash
+```sh
+npm install -g @nebos1/promptov
 promptov
 ```
 
-## Write and send your idea
+The npm package is the terminal client. It connects to the Promptov service; you do not need to run a separate server or configure an AI API key.
 
-Type or paste your description. You can use multiple lines.
+## Write your first prompt
 
-**Enter adds a new line. To submit, type `/send` on its own line and press Enter.**
-
-Example:
+Type or paste an idea. Pressing Enter adds another line. To submit, type `/send` on its own line and press Enter.
 
 ```text
-A small wooden cabin beside a lake.
-Watercolor style, soft morning light, no people.
+A white fox standing in a snowy forest.
+Watercolor style, soft morning light, no text.
 /send
 ```
 
-Wait for Promptov's response.
+If Promptov asks questions, write your answers and finish with `/send` again. You can also request changes to the subject, colors, style, or composition after receiving a prompt.
 
-If it asks a question, write your answer and finish with `/send` again:
+## Commands
 
-```text
-Use warm autumn colors.
-/send
+| Command | Action |
+| --- | --- |
+| `/send` | Submit your current draft. |
+| `/new` | Discard the draft and clear the current conversation. |
+| `/exit` | Exit Promptov. |
+
+Use commands on their own line. An unknown command shows the supported commands and keeps your draft.
+
+## Limits and availability
+
+Message length, conversation size, and service capacity are limited. If a message is too long, shorten it. If the conversation is full, use `/new`. During busy periods, requests may wait in a queue.
+
+When a request fails temporarily, the CLI keeps the current session in memory. To retry the last failed submission, enter `/send` again; you can also write a revised draft. Closing the program or using `/new` clears the session.
+
+The service may be temporarily unavailable, and its first response after inactivity can take longer. Keep the terminal open while waiting. If a request times out, try again later. Generated prompts may contain mistakes; review the result before using it.
+
+## Session data
+
+The CLI keeps recent conversation history and a summary in memory. It does not write a local chat-history file. Older exchanges may be removed as the conversation grows.
+
+Your submitted text and relevant session context are sent to the Promptov backend and its AI service to produce a response. This is an online tool, not an offline application.
+
+## Update or uninstall
+
+```sh
+npm install -g @nebos1/promptov@latest
+npm uninstall -g @nebos1/promptov
 ```
 
-When the final prompt appears, copy it into your image generator. Promptov will then ask for a new idea.
+## Issues
 
-To exit, enter `0` as the first line of a new idea or reply and press Enter. You do not need `/send` to exit this way.
+Report problems at [GitHub Issues](https://github.com/nebos1/promptov/issues). Include the error message and your Node.js version. Leave out private conversation text and credentials.
 
 ## License
 

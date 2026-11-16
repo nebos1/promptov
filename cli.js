@@ -1,184 +1,163 @@
 #!/usr/bin/env node
-import dotenv from 'dotenv';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import { generatePrompt, getGeminiConfig } from './gemini.js';
-import { validateUserMessage, validateHistorySize, validateClarificationRounds } from './validation.js';
+import { generatePrompt } from './api-client.js';
+import { validateUserMessage, validateLocalIntent } from './validation.js';
+import { createHistory } from './history.js';
 import { TerminalIOError } from './errors.js';
 import { getErrorOutcome } from './error-handler.js';
 import { stripVTControlCharacters } from 'node:util';
 
+// KEEP MODEL OUTPUT SAFE FOR THE TERMINAL
 function cleanTerminalText(text) {
     return stripVTControlCharacters(String(text))
         .replace(/\r\n?/g, '\n')
         .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '');
 }
 
-function readSubmission(terminal, label, signal) {
-    return new Promise((resolve, reject) => {
-        const lines = [];
-
-        function finish(error, value) {
-            terminal.off('line', onLine);
-            terminal.off('error', onError);
-            signal.removeEventListener('abort', onAbort);
-
-            if (error) {
-                reject(error);
-            } else {
-                resolve(value);
-            }
-        }
-
-        function onLine(line) {
-            if (line.trim() === '/send') {
-                finish(null, lines.join('\n'));
-                return;
-            }
-
-            if (lines.length === 0 && line.trim() === '0') {
-                finish(null, '0');
-                return;
-            }
-
-            lines.push(line);
-        }
-
-        function onError(error) {
-            finish(error);
-        }
-
-        function onAbort() {
-            const error = new Error('Input closed.');
-            error.code = 'ABORT_ERR';
-            finish(error);
-        }
-
-        if (signal.aborted) {
-            onAbort();
-            return;
-        }
-
-        terminal.on('line', onLine);
-        terminal.once('error', onError);
-        signal.addEventListener('abort', onAbort, { once: true });
-
-        stdout.write(label);
-    });
+// DISPLAY EACH CLARIFICATION QUESTION ON ITS OWN LINE
+function formatAnswer(response) {
+    const text = cleanTerminalText(response.text);
+    if (response.type === 'clarification') {
+        return text.replace(/([?？])[ \t]+(?=\S)/g, '$1\n');
+    }
+    return text;
 }
 
-dotenv.config({ quiet: true });
+// READ A MULTILINE DRAFT; COMMANDS USE THEIR OWN LINE
+async function readSubmission(inputLines, label) {
+    const lines = [];
+    stdout.write(label);
 
-try {
-    getGeminiConfig();
-} catch (error) {
-    const outcome = getErrorOutcome(error);
-    console.error(
-        'An error occurred:',
-        `[${cleanTerminalText(outcome.message)}]`
-    );
-    process.exit(outcome.exitCode);
+    while (true) {
+        const next = await inputLines.next();
+        if (next.done) {
+            return null;
+        }
+        const line = next.value;
+        const command = line.trim();
+        if (command === '/send') {
+            return lines.join('\n');
+        }
+        if (command === '/new' || command === '/exit') {
+            return command;
+        }
+        if (command.startsWith('/')) {
+            console.error(`promptov error Unknown command: ${JSON.stringify(cleanTerminalText(command))}`);
+            console.error('promptov error Did you mean one of these?');
+            console.error('promptov error   /send');
+            console.error('promptov error   /new');
+            console.error('promptov error   /exit');
+            console.error('promptov error Your current draft was kept.');
+            continue;
+        }
+        lines.push(line);
+    }
 }
 
+// ONE INPUT READER ALSO KEEPS LINES FROM A PASTED BLOCK
 const terminal = createInterface({ input: stdin, output: stdout });
+const inputLines = terminal[Symbol.asyncIterator]();
 
 const inputController = new AbortController();
 terminal.once('close', () => {
     inputController.abort();
 });
 
-// Accepted messages for the current idea only.
+const session = createHistory();
 let isFirstTurn = true;
-let history = [];
-let clarificationRounds = 0;
+let lastFailedInput = null;
+let submitted = false;
 
-function startNewIdea() {
-    isFirstTurn = true;
-    history = [];
-    clarificationRounds = 0;
+// KEEP INTERRUPTED OUTPUT SILENTLY FOR A LATER ATTEMPT
+function savePartial(partial) {
+    session.addInterrupted(partial);
 }
 
-while (!inputController.signal.aborted) {
-    try {
-        const label = isFirstTurn
-            ? "Enter your visual idea. Type /send on its own line to submit, or 0 to exit:\n"
-            : "Enter your reply. Type /send on its own line to submit, or 0 to exit:\n";
-        let userInput;
-        try {
-            userInput = await readSubmission(
-                terminal,
-                label,
-                inputController.signal
-            );
-        } catch (error) {
-            if(inputController.signal.aborted && error?.code === 'ABORT_ERR') {
-                throw error;
-            }
-            const message = error instanceof Error ? error.message : String(error);
-            throw new TerminalIOError(message, error);
-        }
-        const idea = userInput.trim();
+async function showWaiting(position) {
+    console.log(`Waiting for available capacity. Queue position: ${position}.`);
+}
 
-        if(idea === '0') {
-            console.log("Exiting Promptov...");
+console.log('Promptov');
+console.log('Write your visual idea over one or more lines.');
+console.log('Commands (type each on its own line):');
+console.log('  /send   Send your current draft.');
+console.log('  /new    Discard your draft and clear this conversation.');
+console.log('  /exit   Exit Promptov.');
+console.log('History is kept only while Promptov runs.\n');
+
+// KEEP HISTORY AND FAILED SUBMISSION DETAILS ONLY FOR THIS RUN
+try {
+    while (!inputController.signal.aborted) {
+        try {
+            const label = isFirstTurn
+                ? 'Enter your visual idea.\n'
+                : 'Enter your reply.\n';
+            let text;
+            try {
+                text = await readSubmission(inputLines, label);
+            } catch (error) {
+                if (inputController.signal.aborted) {
+                    throw error;
+                }
+                throw new TerminalIOError('Could not read terminal input.', error);
+            }
+            if (text === null || text === '/exit') {
+                console.log('Exiting Promptov...');
+                break;
+            }
+            let idea = text.trim();
+            if (!idea && lastFailedInput) idea = lastFailedInput;
+            if (idea === '/new') {
+                session.clear();
+                lastFailedInput = null;
+                isFirstTurn = true;
+                console.log('New session. Previous conversation cleared. Unsent draft discarded.');
+                continue;
+            }
+            validateUserMessage(idea);
+            validateLocalIntent(idea, session.snapshot().history.length > 0);
+            if (idea !== lastFailedInput) {
+                session.clearInterruptions();
+            }
+            session.addUser(idea);
+            submitted = true;
+            lastFailedInput = idea;
+            const snapshot = session.snapshot();
+            if (session.takeTrimmedCount()) {
+                console.log('Older messages were removed; the session summary and recent messages are retained.');
+            }
+            console.log('\nGenerating a response...\n');
+            const response = await generatePrompt(idea, snapshot.history, {
+                context: snapshot.context,
+                interruptions: snapshot.interruptions,
+                signal: inputController.signal,
+                onPartial: savePartial,
+                onWaiting: showWaiting
+            });
+            session.addModel(response);
+            submitted = false;
+            lastFailedInput = null;
+            console.log(`Promptov:\n${formatAnswer(response)}\n`);
+            isFirstTurn = response.type !== 'clarification';
+        } catch (error) {
+            if (submitted) {
+                session.rejectLastUser();
+                submitted = false;
+            }
+            const outcome = getErrorOutcome(error, inputController.signal.aborted);
+            console.error(cleanTerminalText(outcome.message));
+            if (outcome.action === 'continue' || outcome.action === 'reset') {
+                if (outcome.action === 'reset') {
+                    isFirstTurn = true;
+                }
+                continue;
+            }
+            process.exitCode = outcome.exitCode;
             break;
         }
-
-        validateUserMessage(idea);
-        const userMessage = {
-            role: 'user',
-            parts: [{ text: idea }],
-        };
-
-        const requestHistory = history.concat(userMessage);
-        validateHistorySize(requestHistory);
-        console.log('\nGenerating a response...\n');
-        const response = await generatePrompt(idea, requestHistory);
-
-        // count the round before saving anything
-        if(response.type === 'clarification') {
-            clarificationRounds += 1;
-            validateClarificationRounds(clarificationRounds);
-        }
-
-        const modelMessage = {
-            role: "model",
-            parts: [{ text: JSON.stringify(response) }]
-        };
-        history = requestHistory.concat(modelMessage);
-        console.log(`Promptov:\n${cleanTerminalText(response.text)}\n`);
-
-        if(response.type === 'uncensored') {
-            console.log("The request was flagged for safety reasons! Modify your request and try again!\n");
-        }
-
-        if(response.type === 'clarification') {
-            isFirstTurn = false;
-        } else {
-            startNewIdea();
-        }
-
-    } catch (error) {
-        const outcome = getErrorOutcome(error, inputController.signal.aborted);
-        if(outcome.exitCode === 0) {
-            console.log(cleanTerminalText(outcome.message));
-        } else {
-            console.error(
-                'An error occurred:',
-                `[${cleanTerminalText(outcome.message)}]`
-            );
-        }
-
-        if(outcome.action === 'continue') {
-            continue;
-        }
-        if(outcome.action === 'reset') {
-            startNewIdea();
-            continue;
-        }
-        process.exitCode = outcome.exitCode;
-        break;
     }
+} finally {
+    session.clear();
+    terminal.close();
 }
-
-terminal.close();
